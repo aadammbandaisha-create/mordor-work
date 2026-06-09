@@ -18,8 +18,11 @@ if ($Yes -and $RemoveState) {
     & $stateScript
 }
 
-$tokenScript = Join-Path $Root "harness\token-economy\uninstall.ps1"
-& $tokenScript
-
-$rolesScript = Join-Path $Root "harness\agent-roles\uninstall.ps1"
-& $rolesScript
+$OtherMods = @("token-economy", "agent-roles", "mission-control", "web-dash", "continuity",
+    "format-on-edit", "daily-digest", "visual-verify", "self-improve", "mcp-pack")
+foreach ($mod in $OtherMods) {
+    $script = Join-Path $Root "harness\$mod\uninstall.ps1"
+    if (Test-Path -LiteralPath $script) {
+        & $script
+    }
+}

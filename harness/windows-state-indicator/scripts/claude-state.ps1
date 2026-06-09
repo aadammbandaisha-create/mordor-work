@@ -45,7 +45,7 @@ function Get-LastAssistantSummary {
     if ([string]::IsNullOrWhiteSpace($TranscriptPath) -or -not (Test-Path -LiteralPath $TranscriptPath)) {
         return ""
     }
-    $lines = Get-Content -LiteralPath $TranscriptPath -Tail 300
+    $lines = Get-Content -LiteralPath $TranscriptPath -Tail 300 -Encoding UTF8
     [array]::Reverse($lines)
     foreach ($line in $lines) {
         try {

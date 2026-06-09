@@ -42,7 +42,7 @@ function Get-ContextTokens {
     if ([string]::IsNullOrWhiteSpace($TranscriptPath) -or -not (Test-Path -LiteralPath $TranscriptPath)) {
         return 0
     }
-    $lines = Get-Content -LiteralPath $TranscriptPath -Tail 120
+    $lines = Get-Content -LiteralPath $TranscriptPath -Tail 120 -Encoding UTF8
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
         try {
             $evt = $lines[$i] | ConvertFrom-Json -ErrorAction Stop
@@ -114,6 +114,7 @@ if ($model) {
 
 if ($used -gt 0) {
     $pct = [math]::Round(100.0 * $used / $limit)
+    if ($pct -gt 100) { $pct = 100 }
     $color = $green
     $warn = ""
     if ($pct -ge 80) {

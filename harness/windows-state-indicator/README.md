@@ -88,6 +88,10 @@ Run this if you want a visible green/red indicator on screen:
 
 It opens a small always-on-top window in the top-right corner.
 
+Note: the `mission-control` mod supersedes this light with a full dashboard
+(session cards, context %, daily spend). The light keeps working if you
+prefer the minimal version.
+
 ## Ownership
 
 All hook commands include this sentinel:
