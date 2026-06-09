@@ -18,7 +18,7 @@ harness/<mod-name>/
 The installer owns only entries tagged with its sentinel:
 
 ```text
-mutwo:<mod-name>
+mordor:<mod-name>
 ```
 
 That gives three important properties:
@@ -71,7 +71,7 @@ session, so scripts should write state to files and notifications instead.
 - Mods may ship Claude Code skills: `harness/<mod>/skills/<skill>/SKILL.md`,
   installed to `~\.claude\skills\<skill>\`. Ownership = the exact skill dirs.
 - Mods may own a Windows scheduled task; the task name is the sentinel
-  (e.g. `mutwo-daily-digest`).
+  (e.g. `mordor-daily-digest`).
 - PowerShell 5.1 gotchas that have caused real bugs here:
   1. `Get-Content` without `-Encoding UTF8` reads UTF-8 files as ANSI and
      produces mojibake. Always pass the encoding.

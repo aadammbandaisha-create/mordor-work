@@ -56,13 +56,13 @@ Restart Claude Code to activate the hook.
 
 | Owned item | What it is |
 |---|---|
-| `SessionStart` hook in `settings.json` | tagged `mutwo:continuity` as trailing arg |
+| `SessionStart` hook in `settings.json` | tagged `mordor:continuity` as trailing arg |
 | `~\.claude\scripts\session-context.ps1` | runtime hook script |
 | `~\.claude\skills\handoff\` | skill directory (whole dir) |
 | `~\.claude\skills\close-out\` | skill directory (whole dir) |
 
 Uninstall removes only the above. Other mods' hook entries are preserved by the
-sentinel filter -- only entries whose command contains `mutwo:continuity` are removed.
+sentinel filter -- only entries whose command contains `mordor:continuity` are removed.
 
 ## Notes
 

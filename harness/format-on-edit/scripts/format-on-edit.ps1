@@ -1,7 +1,7 @@
 # format-on-edit.ps1
 # PostToolUse hook: runs the project-local formatter on the file Claude just edited/wrote.
 # Never blocks the conversation; always exits 0.
-# Sentinel arg (mutwo:format-on-edit) is accepted and ignored.
+# Sentinel arg (mordor:format-on-edit) is accepted and ignored.
 
 $ErrorActionPreference = "SilentlyContinue"
 

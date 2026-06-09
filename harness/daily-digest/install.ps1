@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ModName   = "daily-digest"
-$TaskName  = "mutwo-daily-digest"
+$TaskName  = "mordor-daily-digest"
 $Here      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $ScriptsDir = Join-Path $ClaudeDir "scripts"

@@ -169,7 +169,7 @@ Write-Host ""
 Write-Host "=== (e) schtasks command string (construction only, NOT executed) ==="
 Write-Host ""
 
-$TaskName      = "mutwo-daily-digest"
+$TaskName      = "mordor-daily-digest"
 $ClaudeDir     = Join-Path $env:USERPROFILE ".claude"
 $ScriptsDir    = Join-Path $ClaudeDir "scripts"
 $TargetScript  = Join-Path $ScriptsDir "daily-digest.ps1"
@@ -184,7 +184,7 @@ Write-Host "  $schtasksCmd"
 Write-Host ""
 
 # Validate the pieces are non-empty and well-formed
-if ($TaskName -match '^mutwo-daily-digest$') {
+if ($TaskName -match '^mordor-daily-digest$') {
     Pass "Task name matches sentinel: $TaskName"
 } else {
     Fail "Task name does not match expected sentinel"

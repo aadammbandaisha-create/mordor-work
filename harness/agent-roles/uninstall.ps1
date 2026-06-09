@@ -3,8 +3,8 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$SentinelStart = "<!-- mutwo:agent-roles start -->"
-$SentinelEnd = "<!-- mutwo:agent-roles end -->"
+$SentinelStart = "<!-- mordor:agent-roles start -->"
+$SentinelEnd = "<!-- mordor:agent-roles end -->"
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $AgentsDir = Join-Path $ClaudeDir "agents"
 $ClaudeMd = Join-Path $ClaudeDir "CLAUDE.md"

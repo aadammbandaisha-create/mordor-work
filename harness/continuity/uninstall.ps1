@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:continuity"
+$Sentinel = "mordor:continuity"
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $Settings = Join-Path $ClaudeDir "settings.json"
 $ScriptsDir = Join-Path $ClaudeDir "scripts"

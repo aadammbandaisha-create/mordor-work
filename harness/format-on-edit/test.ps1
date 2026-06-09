@@ -53,7 +53,7 @@ $jsFile = Join-Path $tmpDir "hello.js"
 
 $stdinJson = '{"tool_name":"Edit","tool_input":{"file_path":"' + $jsFile.Replace('\','\\') + '"}}'
 
-$result = $stdinJson | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mutwo:format-on-edit"
+$result = $stdinJson | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mordor:format-on-edit"
 $exitCode = $LASTEXITCODE
 
 Assert-True ($exitCode -eq 0) "Exit code is 0 (got $exitCode)"
@@ -77,7 +77,7 @@ $xyzFile = Join-Path $tmpDir2 "data.xyz"
 
 $stdinJson2 = '{"tool_name":"Edit","tool_input":{"file_path":"' + $xyzFile.Replace('\','\\') + '"}}'
 
-$result2 = $stdinJson2 | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mutwo:format-on-edit"
+$result2 = $stdinJson2 | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mordor:format-on-edit"
 $exitCode2 = $LASTEXITCODE
 
 Assert-True ($exitCode2 -eq 0) "Exit code is 0 for .xyz (got $exitCode2)"
@@ -94,7 +94,7 @@ Write-Host ""
 Write-Host "=== TEST 4: stdin JSON with no file_path -- expect exit 0 ==="
 
 $stdinNoPath = '{"tool_name":"Edit","tool_input":{"other_field":"foo"}}'
-$result3 = $stdinNoPath | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mutwo:format-on-edit"
+$result3 = $stdinNoPath | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mordor:format-on-edit"
 $exitCode3 = $LASTEXITCODE
 Assert-True ($exitCode3 -eq 0) "Exit code is 0 when file_path missing (got $exitCode3)"
 
@@ -104,7 +104,7 @@ Assert-True ($exitCode3 -eq 0) "Exit code is 0 when file_path missing (got $exit
 Write-Host ""
 Write-Host "=== TEST 5: empty stdin -- expect exit 0 ==="
 
-$result4 = "" | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mutwo:format-on-edit"
+$result4 = "" | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mordor:format-on-edit"
 $exitCode4 = $LASTEXITCODE
 Assert-True ($exitCode4 -eq 0) "Exit code is 0 for empty stdin (got $exitCode4)"
 
@@ -128,7 +128,7 @@ if ($psaMods) {
     "function foo {param( [string]`$x )  return `$x}" | Set-Content -LiteralPath $ps1File -Encoding UTF8
 
     $stdinPs1 = '{"tool_name":"Edit","tool_input":{"file_path":"' + $ps1File.Replace('\','\\') + '"}}'
-    $result5 = $stdinPs1 | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mutwo:format-on-edit"
+    $result5 = $stdinPs1 | powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script "mordor:format-on-edit"
     $exitCode5 = $LASTEXITCODE
     Assert-True ($exitCode5 -eq 0) "Exit code is 0 for .ps1 with PSScriptAnalyzer (got $exitCode5)"
 
@@ -152,7 +152,7 @@ Write-Host "=== TEST 7: settings-transform fixture ==="
 # Simpler approach: define the same functions inline here as a faithful copy,
 # then exercise them directly.
 
-$Sentinel = "mutwo:format-on-edit"
+$Sentinel = "mordor:format-on-edit"
 
 function T-RemoveOwnedEntries {
     param($Entries)
@@ -206,8 +206,8 @@ function T-SetHookEvent {
 }
 
 # Build a mock settings object with a windows-state-indicator entry
-$wsiCommand = "powershell.exe -File state.ps1 mutwo:windows-state-indicator"
-$foeCommand  = "powershell.exe -File format-on-edit.ps1 mutwo:format-on-edit"
+$wsiCommand = "powershell.exe -File state.ps1 mordor:windows-state-indicator"
+$foeCommand  = "powershell.exe -File format-on-edit.ps1 mordor:format-on-edit"
 
 $mockSettings = [pscustomobject]@{
     hooks = [pscustomobject]@{
@@ -228,8 +228,8 @@ $wsiPresent = $false
 $foeCount   = 0
 foreach ($e in $ptEntries) {
     foreach ($h in @($e.hooks)) {
-        if (([string]$h.command).Contains("mutwo:windows-state-indicator")) { $wsiPresent = $true }
-        if (([string]$h.command).Contains("mutwo:format-on-edit")) { $foeCount++ }
+        if (([string]$h.command).Contains("mordor:windows-state-indicator")) { $wsiPresent = $true }
+        if (([string]$h.command).Contains("mordor:format-on-edit")) { $foeCount++ }
     }
 }
 Assert-True $wsiPresent "WSI entry survives after first install pass"
@@ -243,8 +243,8 @@ $wsiPresent2 = $false
 $foeCount2   = 0
 foreach ($e in $ptEntries2) {
     foreach ($h in @($e.hooks)) {
-        if (([string]$h.command).Contains("mutwo:windows-state-indicator")) { $wsiPresent2 = $true }
-        if (([string]$h.command).Contains("mutwo:format-on-edit")) { $foeCount2++ }
+        if (([string]$h.command).Contains("mordor:windows-state-indicator")) { $wsiPresent2 = $true }
+        if (([string]$h.command).Contains("mordor:format-on-edit")) { $foeCount2++ }
     }
 }
 Assert-True $wsiPresent2 "WSI entry survives after second install pass"

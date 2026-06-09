@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("harness", "all", "windows-state-indicator", "token-economy", "agent-roles",
+    [ValidateSet("harness", "all", "work", "windows-state-indicator", "token-economy", "agent-roles",
         "mission-control", "web-dash", "continuity", "format-on-edit", "daily-digest",
         "visual-verify", "self-improve", "mcp-pack")]
     [string]$Mode = "harness",
@@ -27,9 +27,16 @@ $AllMods = @("windows-state-indicator", "token-economy", "agent-roles",
     "mission-control", "web-dash", "continuity", "format-on-edit", "daily-digest",
     "visual-verify", "self-improve", "mcp-pack")
 
+# Muted profile for a workstation: no network-serving dashboard. Future
+# life-director mods (inboxes, agenda, voice briefs) stay out of this list.
+$WorkMods = @("windows-state-indicator", "token-economy", "agent-roles",
+    "mission-control", "continuity", "format-on-edit", "daily-digest",
+    "visual-verify", "self-improve", "mcp-pack")
+
 switch ($Mode) {
     "harness" { foreach ($mod in $AllMods) { Invoke-ModInstall $mod } }
     "all" { foreach ($mod in $AllMods) { Invoke-ModInstall $mod } }
+    "work" { foreach ($mod in $WorkMods) { Invoke-ModInstall $mod } }
     default { Invoke-ModInstall $Mode }
 }
 

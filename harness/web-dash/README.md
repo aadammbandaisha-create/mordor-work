@@ -72,7 +72,7 @@ NOT removed (user data) - delete it manually if desired.
 
 ## Ownership
 
-Sentinel: mutwo:web-dash
+Sentinel: mordor:web-dash
 
 Files owned (removed on uninstall):
 - ~/.claude/scripts/webdash/server.js

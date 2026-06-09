@@ -35,7 +35,7 @@ function Invoke-SessionContext {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "powershell.exe"
-    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptUnderTest`" mutwo:continuity"
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptUnderTest`" mordor:continuity"
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true

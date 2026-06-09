@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:windows-state-indicator"
+$Sentinel = "mordor:windows-state-indicator"
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $Settings = Join-Path $ClaudeDir "settings.json"
 $ScriptsDir = Join-Path $ClaudeDir "scripts"

@@ -69,9 +69,9 @@ The script prints the output file path on success.
 This mod owns exactly:
 
 - `~\.claude\scripts\daily-digest.ps1` - the runtime script (removed by uninstall)
-- Windows Task Scheduler task named `mutwo-daily-digest` (removed by uninstall)
+- Windows Task Scheduler task named `mordor-daily-digest` (removed by uninstall)
 
-The task name `mutwo-daily-digest` is the sentinel. The mod does NOT touch
+The task name `mordor-daily-digest` is the sentinel. The mod does NOT touch
 `~\.claude\settings.json`.
 
 ## Pricing note

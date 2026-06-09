@@ -4,7 +4,7 @@ param()
 $ErrorActionPreference = "Stop"
 
 $ModName     = "daily-digest"
-$TaskName    = "mutwo-daily-digest"
+$TaskName    = "mordor-daily-digest"
 $ClaudeDir   = Join-Path $env:USERPROFILE ".claude"
 $ScriptsDir  = Join-Path $ClaudeDir "scripts"
 $TargetScript = Join-Path $ScriptsDir "daily-digest.ps1"

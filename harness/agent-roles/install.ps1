@@ -3,8 +3,8 @@ param([switch]$Yes)
 
 $ErrorActionPreference = "Stop"
 
-$SentinelStart = "<!-- mutwo:agent-roles start -->"
-$SentinelEnd = "<!-- mutwo:agent-roles end -->"
+$SentinelStart = "<!-- mordor:agent-roles start -->"
+$SentinelEnd = "<!-- mordor:agent-roles end -->"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $AgentsDir = Join-Path $ClaudeDir "agents"

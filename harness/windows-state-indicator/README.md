@@ -97,7 +97,7 @@ prefer the minimal version.
 All hook commands include this sentinel:
 
 ```text
-mutwo:windows-state-indicator
+mordor:windows-state-indicator
 ```
 
 The installer removes old entries with that sentinel before adding fresh ones.

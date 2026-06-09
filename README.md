@@ -1,8 +1,16 @@
-# mutwo Windows Claude harness
+# Mordor
 
-Windows-oriented clone of the `mutwo-skills` harness structure for Claude Code.
+A Windows Claude Code harness: one repo of installable mods that turn Claude
+Code into a tiered-agent operation with a director (Sauron, on Fable 5),
+dashboards, continuity, and automation. Originally derived from the
+`mutwo-skills` harness structure; sentinels now use the `mordor:` prefix.
 
-This copy focuses on harness mods, not skills. It keeps the upstream shape:
+Two profiles:
+
+- **full** - everything, for the personal machine (life-director features land here)
+- **work** - muted subset for a workstation: no network-serving dashboard, work items only
+
+It keeps the upstream module shape:
 
 ```text
 harness/
@@ -18,7 +26,7 @@ harness/
 - `harness/windows-state-indicator`: a Windows adaptation of the upstream tab-state indicator.
 - `harness/token-economy`: statusline (context % / session cost / model / branch), a local usage report, and a token-conservation playbook.
 - `harness/agent-roles`: director/worker subagent framework — six roles (scout/researcher/scholar/builder/reviewer/architect) pinned to the model escalation ladder, plus a director doctrine in `~\.claude\CLAUDE.md`.
-- Sentinel-tagged hook ownership using `mutwo:windows-state-indicator`.
+- Sentinel-tagged hook ownership using `mordor:windows-state-indicator`.
 - Idempotent install and uninstall.
 - Settings backup before edits.
 - JSON validation before and after settings changes.

@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:web-dash"
+$Sentinel = "mordor:web-dash"
 $ClaudeDir    = Join-Path $env:USERPROFILE ".claude"
 $ScriptsDir   = Join-Path $ClaudeDir "scripts"
 $WebdashDir   = Join-Path $ScriptsDir "webdash"

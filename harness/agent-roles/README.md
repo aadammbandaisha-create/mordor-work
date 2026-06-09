@@ -56,7 +56,7 @@ rest of `~\.claude\CLAUDE.md` is preserved; the file is backed up first).
 - Role files: this mod owns exactly `scout.md`, `researcher.md`,
   `scholar.md`, `builder.md`, `reviewer.md`, `architect.md` in
   `~\.claude\agents\`. Other agent files are never touched.
-- Doctrine: owned via `<!-- mutwo:agent-roles start/end -->` markers in
+- Doctrine: owned via `<!-- mordor:agent-roles start/end -->` markers in
   `~\.claude\CLAUDE.md`. Install replaces only that block; uninstall removes
   only that block.
 

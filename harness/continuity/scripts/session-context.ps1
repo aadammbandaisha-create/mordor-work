@@ -1,5 +1,5 @@
 # session-context.ps1 -- SessionStart hook; stdout is the injected context.
-# Accepts and ignores a trailing sentinel argument (mutwo:continuity).
+# Accepts and ignores a trailing sentinel argument (mordor:continuity).
 # $ErrorActionPreference SilentlyContinue: any failure is silent; always exit 0.
 
 $ErrorActionPreference = "SilentlyContinue"

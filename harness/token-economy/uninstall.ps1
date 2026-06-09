@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:token-economy"
+$Sentinel = "mordor:token-economy"
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $Settings = Join-Path $ClaudeDir "settings.json"
 $ScriptsDir = Join-Path $ClaudeDir "scripts"

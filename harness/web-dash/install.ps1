@@ -3,7 +3,7 @@ param([switch]$Yes)
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:web-dash"
+$Sentinel = "mordor:web-dash"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ClaudeDir    = Join-Path $env:USERPROFILE ".claude"
 $ScriptsDir   = Join-Path $ClaudeDir "scripts"

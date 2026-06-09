@@ -17,7 +17,7 @@ propose concrete harness improvements. Never auto-apply changes.
 
 - Every mod lives at harness/<name>/ with README.md, install.ps1, uninstall.ps1.
 - Installers: -Yes switch for unattended; Read-Host confirm otherwise; JSON validate before+after; timestamped .bak backup; restore on failure.
-- Every entry added to settings.json embeds sentinel mutwo:<mod-name>; uninstall removes only owned entries.
+- Every entry added to settings.json embeds sentinel mordor:<mod-name>; uninstall removes only owned entries.
 - PowerShell 5.1 syntax only; ASCII-only content; all files -Encoding UTF8; always exit 0 in hook scripts.
 - Runtime hooks: $ErrorActionPreference = "SilentlyContinue"; never write stdout noise from hooks.
 
@@ -90,7 +90,7 @@ If the user approves a new mod:
   harness/windows-state-indicator/install.ps1:
   Read-Settings, Ensure-PropertyObject, Remove-OwnedEntries,
   New-HookEntry, Set-HookEvent.
-- Sentinel string: mutwo:<name> embedded in every owned settings.json entry.
+- Sentinel string: mordor:<name> embedded in every owned settings.json entry.
 
 If the user approves a permission allow-rule, show the exact JSON diff first:
 

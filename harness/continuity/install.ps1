@@ -3,7 +3,7 @@ param([switch]$Yes)
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:continuity"
+$Sentinel = "mordor:continuity"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $Settings = Join-Path $ClaudeDir "settings.json"

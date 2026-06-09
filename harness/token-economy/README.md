@@ -98,7 +98,7 @@ Restart Claude Code to activate the statusline.
 
 ## Ownership
 
-The statusline command embeds the sentinel `mutwo:token-economy` (as an
+The statusline command embeds the sentinel `mordor:token-economy` (as an
 inert trailing argument). Install replaces only a statusline it owns
 (warning if it overwrites a foreign one — recoverable from the timestamped
 backup), and uninstall removes only an owned entry.

@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:format-on-edit"
+$Sentinel = "mordor:format-on-edit"
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $Settings = Join-Path $ClaudeDir "settings.json"
 $ScriptsDir = Join-Path $ClaudeDir "scripts"

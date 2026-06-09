@@ -3,7 +3,7 @@ param([switch]$Yes)
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mutwo:token-economy"
+$Sentinel = "mordor:token-economy"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $Settings = Join-Path $ClaudeDir "settings.json"

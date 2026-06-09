@@ -77,9 +77,9 @@ starting Claude Code. One line per dispatch decision is appended to
 ## Ownership
 
 - Hook entry: `hooks.PostToolUse` entry whose command contains the sentinel
-  `mutwo:format-on-edit`. Install adds exactly one such entry (idempotent on
+  `mordor:format-on-edit`. Install adds exactly one such entry (idempotent on
   re-run). Uninstall removes only entries that contain this sentinel; all other
-  mods' PostToolUse entries (e.g., `mutwo:windows-state-indicator`) survive.
+  mods' PostToolUse entries (e.g., `mordor:windows-state-indicator`) survive.
 - Script file: `~\.claude\scripts\format-on-edit.ps1`.
 - A timestamped backup of `settings.json` is created before any write. If the
   write fails, the backup is restored automatically.

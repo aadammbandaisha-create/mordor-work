@@ -45,7 +45,7 @@ if ($AutoStart) {
     $lnk.TargetPath       = $psExe
     $lnk.Arguments        = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Target`""
     $lnk.WorkingDirectory = $ClaudeDir
-    $lnk.Description      = "mission-control dashboard (mutwo:mission-control)"
+    $lnk.Description      = "mission-control dashboard (mordor:mission-control)"
     $lnk.Save()
     Write-Host "Created startup shortcut: $LnkPath"
 }
