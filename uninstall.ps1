@@ -6,14 +6,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script = Join-Path $Root "harness\windows-state-indicator\uninstall.ps1"
 
+$stateScript = Join-Path $Root "harness\windows-state-indicator\uninstall.ps1"
 if ($Yes -and $RemoveState) {
-    & $script -Yes -RemoveState
+    & $stateScript -Yes -RemoveState
 } elseif ($Yes) {
-    & $script -Yes
+    & $stateScript -Yes
 } elseif ($RemoveState) {
-    & $script -RemoveState
+    & $stateScript -RemoveState
 } else {
-    & $script
+    & $stateScript
 }
+
+$tokenScript = Join-Path $Root "harness\token-economy\uninstall.ps1"
+& $tokenScript

@@ -16,6 +16,7 @@ harness/
 ## What is included
 
 - `harness/windows-state-indicator`: a Windows adaptation of the upstream tab-state indicator.
+- `harness/token-economy`: statusline (context % / session cost / model / branch), a local usage report, and a token-conservation playbook.
 - Sentinel-tagged hook ownership using `mutwo:windows-state-indicator`.
 - Idempotent install and uninstall.
 - Settings backup before edits.

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("harness", "all", "windows-state-indicator")]
+    [ValidateSet("harness", "all", "windows-state-indicator", "token-economy")]
     [string]$Mode = "harness",
     [switch]$Yes
 )
@@ -21,10 +21,12 @@ function Invoke-ModInstall {
     }
 }
 
+$AllMods = @("windows-state-indicator", "token-economy")
+
 switch ($Mode) {
-    "harness" { Invoke-ModInstall "windows-state-indicator" }
-    "all" { Invoke-ModInstall "windows-state-indicator" }
-    "windows-state-indicator" { Invoke-ModInstall "windows-state-indicator" }
+    "harness" { foreach ($mod in $AllMods) { Invoke-ModInstall $mod } }
+    "all" { foreach ($mod in $AllMods) { Invoke-ModInstall $mod } }
+    default { Invoke-ModInstall $Mode }
 }
 
 Write-Host ""
