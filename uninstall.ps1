@@ -20,3 +20,6 @@ if ($Yes -and $RemoveState) {
 
 $tokenScript = Join-Path $Root "harness\token-economy\uninstall.ps1"
 & $tokenScript
+
+$rolesScript = Join-Path $Root "harness\agent-roles\uninstall.ps1"
+& $rolesScript

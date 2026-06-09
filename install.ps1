@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("harness", "all", "windows-state-indicator", "token-economy")]
+    [ValidateSet("harness", "all", "windows-state-indicator", "token-economy", "agent-roles")]
     [string]$Mode = "harness",
     [switch]$Yes
 )
@@ -21,7 +21,7 @@ function Invoke-ModInstall {
     }
 }
 
-$AllMods = @("windows-state-indicator", "token-economy")
+$AllMods = @("windows-state-indicator", "token-economy", "agent-roles")
 
 switch ($Mode) {
     "harness" { foreach ($mod in $AllMods) { Invoke-ModInstall $mod } }
