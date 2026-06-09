@@ -8,7 +8,7 @@ $SentinelEnd = "<!-- mutwo:agent-roles end -->"
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $AgentsDir = Join-Path $ClaudeDir "agents"
 $ClaudeMd = Join-Path $ClaudeDir "CLAUDE.md"
-$RoleFiles = @("scout.md", "researcher.md", "builder.md", "reviewer.md", "architect.md")
+$RoleFiles = @("scout.md", "researcher.md", "scholar.md", "builder.md", "reviewer.md", "architect.md")
 
 foreach ($file in $RoleFiles) {
     $path = Join-Path $AgentsDir $file

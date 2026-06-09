@@ -9,7 +9,7 @@ $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
 $AgentsDir = Join-Path $ClaudeDir "agents"
 $ClaudeMd = Join-Path $ClaudeDir "CLAUDE.md"
-$RoleFiles = @("scout.md", "researcher.md", "builder.md", "reviewer.md", "architect.md")
+$RoleFiles = @("scout.md", "researcher.md", "scholar.md", "builder.md", "reviewer.md", "architect.md")
 
 Write-Host ""
 Write-Host "Install agent-roles"

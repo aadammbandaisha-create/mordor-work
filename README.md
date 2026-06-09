@@ -17,7 +17,7 @@ harness/
 
 - `harness/windows-state-indicator`: a Windows adaptation of the upstream tab-state indicator.
 - `harness/token-economy`: statusline (context % / session cost / model / branch), a local usage report, and a token-conservation playbook.
-- `harness/agent-roles`: director/worker subagent framework — five roles (scout/researcher/builder/reviewer/architect) pinned to the model escalation ladder, plus a director doctrine in `~\.claude\CLAUDE.md`.
+- `harness/agent-roles`: director/worker subagent framework — six roles (scout/researcher/scholar/builder/reviewer/architect) pinned to the model escalation ladder, plus a director doctrine in `~\.claude\CLAUDE.md`.
 - Sentinel-tagged hook ownership using `mutwo:windows-state-indicator`.
 - Idempotent install and uninstall.
 - Settings backup before edits.

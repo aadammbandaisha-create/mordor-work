@@ -6,13 +6,14 @@ token-economy escalation ladder as concrete, loadable roles.
 ## The model
 
 The main session agent is the **director** (Fable 5). It plans, decides, and
-delegates. Five pre-defined roles live in `~\.claude\agents\`, each pinned to
+delegates. Six pre-defined roles live in `~\.claude\agents\`, each pinned to
 the model tier its work deserves:
 
 | Role | Model | Use for |
 | --- | --- | --- |
 | `scout` | Haiku | Locating files/symbols/facts; read-only, returns paths + facts |
-| `researcher` | Sonnet | Web/docs research; dense cited reports |
+| `researcher` | Sonnet | Web/docs research; dense cited reports of raw findings |
+| `scholar` | Fable 5 | Interprets gathered research: synthesis, contradiction resolution, implications; verifies load-bearing sources itself |
 | `builder` | Sonnet | Scoped implementation with acceptance criteria |
 | `reviewer` | Opus 4.8 | High-importance review; adversarial verification |
 | `architect` | Fable 5 | Prime importance: design, security, hard debugging |
@@ -53,8 +54,8 @@ rest of `~\.claude\CLAUDE.md` is preserved; the file is backed up first).
 ## Ownership
 
 - Role files: this mod owns exactly `scout.md`, `researcher.md`,
-  `builder.md`, `reviewer.md`, `architect.md` in `~\.claude\agents\`. Other
-  agent files are never touched.
+  `scholar.md`, `builder.md`, `reviewer.md`, `architect.md` in
+  `~\.claude\agents\`. Other agent files are never touched.
 - Doctrine: owned via `<!-- mutwo:agent-roles start/end -->` markers in
   `~\.claude\CLAUDE.md`. Install replaces only that block; uninstall removes
   only that block.
