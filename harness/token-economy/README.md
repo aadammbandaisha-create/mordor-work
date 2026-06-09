@@ -49,6 +49,20 @@ These habits save more than any tooling. Ordered by impact:
    Custom agents in `.claude/agents/*.md` can pin `model: haiku` in their
    frontmatter for true grunt work. Switch the main model mid-session with
    `/model` when a task needs more or less brainpower.
+
+   The escalation ladder — the director matches subagent model to the
+   importance and logic demands of each task, not one default for all:
+
+   | Task tier | Subagent model |
+   | --- | --- |
+   | Prime importance, deep reasoning (architecture, security, hard debugging) | Fable 5 |
+   | High importance, high logic | Opus 4.8 (or Fable 5 at the director's judgment) |
+   | Standard implementation, search, research | Sonnet (the default) |
+   | Mechanical grunt work (bulk edits, formatting, simple lookups) | Haiku |
+
+   Escalation is per-agent and costs nothing to set up: the director passes
+   a model override when spawning the agent. The expensive models are spent
+   only on the calls where logic quality compounds.
 2. **`/clear` between unrelated tasks.** Carrying a finished task's context
    into the next one means every subsequent message re-reads it (and
    re-bills it on cache misses).
