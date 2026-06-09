@@ -64,3 +64,20 @@ Claude Code hook entries use this shape:
 
 Runtime scripts should be quiet by default. Hook stdout can clutter the user
 session, so scripts should write state to files and notifications instead.
+(Exception: SessionStart hooks, where stdout IS the injected context.)
+
+## Extended conventions (learned in the field)
+
+- Mods may ship Claude Code skills: `harness/<mod>/skills/<skill>/SKILL.md`,
+  installed to `~\.claude\skills\<skill>\`. Ownership = the exact skill dirs.
+- Mods may own a Windows scheduled task; the task name is the sentinel
+  (e.g. `mutwo-daily-digest`).
+- PowerShell 5.1 gotchas that have caused real bugs here:
+  1. `Get-Content` without `-Encoding UTF8` reads UTF-8 files as ANSI and
+     produces mojibake. Always pass the encoding.
+  2. `Set-Content -Encoding UTF8` writes a BOM. Node's `JSON.parse` rejects
+     BOMs - any JS reading harness-written JSON must strip U+FEFF first.
+  3. Calling the `claude` npm shim (claude.ps1) eats a literal `--` argument
+     during parameter binding. Route such commands through `cmd /c "..."`.
+- UIs reading transcripts assume a 200k context window; clamp percent at 100
+  (larger-window models would otherwise overflow the gauge).
