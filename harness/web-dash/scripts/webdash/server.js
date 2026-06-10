@@ -447,6 +447,12 @@ function handleDispatch(req, res) {
 
     const prompt = parsed.prompt;
     const projectIndex = parsed.projectIndex;
+    // Optional model override. Allowlist only -- never pass an arbitrary string to the CLI.
+    const MODEL_ALLOW = ["sonnet", "opus", "haiku", "fable"];
+    let model = "";
+    if (typeof parsed.model === "string" && MODEL_ALLOW.indexOf(parsed.model) !== -1) {
+      model = parsed.model;
+    }
 
     if (typeof prompt !== "string" || prompt.trim() === "") {
       res.writeHead(400, { "Content-Type": "application/json" });
@@ -479,6 +485,7 @@ function handleDispatch(req, res) {
       id:        id,
       prompt:    prompt.slice(0, 200),
       project:   { label: project.label, path: project.path },
+      model:     model || "default",
       status:    "running",
       startedAt: new Date().toISOString(),
       endedAt:   null,
@@ -489,7 +496,9 @@ function handleDispatch(req, res) {
     jobs.unshift(job);
     pruneJobs();
 
-    const args = CLAUDE_ARGS_PRE.concat(["-p", prompt, "--output-format", "text"]);
+    let baseArgs = ["-p", prompt, "--output-format", "text"];
+    if (model) baseArgs = baseArgs.concat(["--model", model]);
+    const args = CLAUDE_ARGS_PRE.concat(baseArgs);
     let child;
     try {
       child = cp.spawn(CLAUDE_EXE, args, {
@@ -713,6 +722,13 @@ const HTML_PAGE = `<!DOCTYPE html>
     <h2>Command Deck</h2>
     <div class="dispatch-row">
       <select id="projectSelect"><option value="">-- no projects --</option></select>
+      <select id="modelSelect" title="Model for dispatched runs">
+        <option value="">model: default</option>
+        <option value="haiku">haiku</option>
+        <option value="sonnet">sonnet</option>
+        <option value="opus">opus</option>
+        <option value="fable">fable</option>
+      </select>
     </div>
     <textarea class="dispatch-textarea" id="freePrompt" placeholder="Type a prompt or click Run on a deck button..."></textarea>
     <button class="run-dispatch-btn" id="runFreeBtn" onclick="dispatchFree()">Run</button>
@@ -791,6 +807,18 @@ const HTML_PAGE = `<!DOCTYPE html>
       }
     }
     sel.onchange = function() { localStorage.setItem("webdash_project", sel.value); };
+
+    var msel = document.getElementById("modelSelect");
+    if (msel && !msel._wired) {
+      var savedModel = localStorage.getItem("webdash_model");
+      if (savedModel !== null) {
+        for (var k = 0; k < msel.options.length; k++) {
+          if (msel.options[k].value === savedModel) { msel.selectedIndex = k; break; }
+        }
+      }
+      msel.onchange = function() { localStorage.setItem("webdash_model", msel.value); };
+      msel._wired = true;
+    }
   }
 
   function selectedProjectIndex() {
@@ -821,10 +849,18 @@ const HTML_PAGE = `<!DOCTYPE html>
       .catch(function(err) { callback(0, { error: String(err) }); });
   }
 
+  function selectedModel() {
+    var el = document.getElementById("modelSelect");
+    return el ? el.value : "";
+  }
+
   function dispatchPrompt(prompt) {
     var idx = selectedProjectIndex();
     if (idx === null) { alert("Select a project first."); return; }
-    postWithAuth("/api/dispatch", { prompt: prompt, projectIndex: idx }, function(status, data) {
+    var body = { prompt: prompt, projectIndex: idx };
+    var m = selectedModel();
+    if (m) body.model = m;
+    postWithAuth("/api/dispatch", body, function(status, data) {
       if (status === 200) {
         startJobPoll();
       } else {
@@ -898,7 +934,7 @@ const HTML_PAGE = `<!DOCTYPE html>
       html += "<div class=\\"job-header\\">";
       html += "<span class=\\"job-chip " + chipClass + "\\">" + escHtml(j.status.toUpperCase()) + "</span>";
       html += "<span class=\\"job-prompt\\">" + escHtml(j.prompt) + "</span>";
-      html += "<span class=\\"job-project\\">" + escHtml(j.project ? j.project.label : "") + "</span>";
+      html += "<span class=\\"job-project\\">" + escHtml(j.project ? j.project.label : "") + (j.model && j.model !== "default" ? " &middot; " + escHtml(j.model) : "") + "</span>";
       html += "<span class=\\"job-age\\">" + fmtAgeMs(j.startedAt) + "</span>";
       if (j.status === "running") {
         html += "<button class=\\"job-kill-btn\\" onclick=\\"killJob('" + j.id + "')\\">Kill</button>";
@@ -924,7 +960,10 @@ const HTML_PAGE = `<!DOCTYPE html>
     var limit = ctx.limit || 200000;
     document.getElementById("ctxFill").style.width = Math.min(100, pct) + "%";
     document.getElementById("ctxFill").style.background = ctxColor(pct);
-    document.getElementById("ctxLabel").textContent = "ctx " + pct + "% (" + Math.round(used / 1000) + "k/" + Math.round(limit / 1000) + "k)";
+    var usedK = Math.round(used / 1000);
+    var limitK = Math.round(limit / 1000);
+    var ctxText = used > limit ? ("ctx " + pct + "% (" + usedK + "k, window " + limitK + "k)") : ("ctx " + pct + "% (" + usedK + "k/" + limitK + "k)");
+    document.getElementById("ctxLabel").textContent = ctxText;
 
     // today spend
     var spend = data.spend || {};
