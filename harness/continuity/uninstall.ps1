@@ -11,6 +11,7 @@ $SkillsDir = Join-Path $ClaudeDir "skills"
 $TargetScript = Join-Path $ScriptsDir "session-context.ps1"
 $TargetHandoff = Join-Path $SkillsDir "handoff"
 $TargetCloseOut = Join-Path $SkillsDir "close-out"
+$TargetMap = Join-Path $SkillsDir "map"
 
 if (-not (Test-Path -LiteralPath $Settings)) {
     Write-Host "No settings file found. Nothing to uninstall."
@@ -72,7 +73,7 @@ if (Test-Path -LiteralPath $TargetScript) {
     Write-Host "Removed $TargetScript"
 }
 
-foreach ($dir in @($TargetHandoff, $TargetCloseOut)) {
+foreach ($dir in @($TargetHandoff, $TargetCloseOut, $TargetMap)) {
     if (Test-Path -LiteralPath $dir) {
         Remove-Item -LiteralPath $dir -Recurse -Force
         Write-Host "Removed $dir"

@@ -97,7 +97,7 @@ try {
     "## Context`nThis is a test handoff document." | Set-Content -LiteralPath $handoffPath -Encoding UTF8
 
     # Pipe JSON into session-context.ps1
-    $json = "{`"session_id`":`"test-123`",`"cwd`":`"$($tmp.Replace('\','\\'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"normal`"}"
+    $json = "{`"session_id`":`"test-123`",`"cwd`":`"$(($tmp | ConvertTo-Json).Trim('"'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"normal`"}"
     $result = Invoke-SessionContext -StdinJson $json
 
     Assert-True "Exit code 0 (git+handoff)" ($result.ExitCode -eq 0)
@@ -120,7 +120,7 @@ $tmp2 = Join-Path $env:TEMP ("continuity_test_" + [System.Guid]::NewGuid().ToStr
 New-Item -ItemType Directory -Force -Path $tmp2 | Out-Null
 
 try {
-    $json2 = "{`"session_id`":`"test-456`",`"cwd`":`"$($tmp2.Replace('\','\\'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"normal`"}"
+    $json2 = "{`"session_id`":`"test-456`",`"cwd`":`"$(($tmp2 | ConvertTo-Json).Trim('"'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"normal`"}"
     $result2 = Invoke-SessionContext -StdinJson $json2
 
     Assert-True "Exit code 0 (non-git)" ($result2.ExitCode -eq 0)
@@ -150,7 +150,7 @@ try {
     $null = & git commit -m "initial commit" 2>&1
     Pop-Location
 
-    $json3 = "{`"session_id`":`"test-789`",`"cwd`":`"$($tmp3.Replace('\','\\'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"compact`"}"
+    $json3 = "{`"session_id`":`"test-789`",`"cwd`":`"$(($tmp3 | ConvertTo-Json).Trim('"'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"compact`"}"
     $result3 = Invoke-SessionContext -StdinJson $json3
 
     Assert-True "Exit code 0 (compact)" ($result3.ExitCode -eq 0)
@@ -158,6 +158,109 @@ try {
 } finally {
     if (Test-Path -LiteralPath $tmp3) {
         Remove-Item -LiteralPath $tmp3 -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# ------------------------------------------------------------------
+# 5. project-map.md injection
+# ------------------------------------------------------------------
+Write-Host ""
+Write-Host "-- Scenario: project-map.md injection --"
+
+$tmp4 = Join-Path $env:TEMP ("continuity_test_" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))
+New-Item -ItemType Directory -Force -Path $tmp4 | Out-Null
+
+try {
+    Push-Location $tmp4
+    $null = & git init 2>&1
+    $null = & git config user.email "test@example.com" 2>&1
+    $null = & git config user.name "Test" 2>&1
+    "hello" | Set-Content -Path (Join-Path $tmp4 "hello.txt") -Encoding UTF8
+    $null = & git add . 2>&1
+    $null = & git commit -m "initial commit" 2>&1
+    Pop-Location
+
+    $claudeDir4 = Join-Path $tmp4 ".claude"
+    New-Item -ItemType Directory -Force -Path $claudeDir4 | Out-Null
+    "# Project map`nEntry: hello.txt`nBuild: none" | Set-Content (Join-Path $claudeDir4 "project-map.md") -Encoding UTF8
+
+    $json4 = "{`"cwd`":`"$(($tmp4 | ConvertTo-Json).Trim('"'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"normal`"}"
+    $result4 = Invoke-SessionContext -StdinJson $json4
+
+    Assert-True "Exit code 0 (project-map)" ($result4.ExitCode -eq 0)
+    Assert-True "Output contains '## Project map'" ($result4.Stdout -match "## Project map")
+    Assert-True "Output contains project-map content" ($result4.Stdout -match "Entry: hello.txt")
+} finally {
+    if (Test-Path -LiteralPath $tmp4) {
+        Remove-Item -LiteralPath $tmp4 -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# ------------------------------------------------------------------
+# 6. TODO/FIXME markers injection
+# ------------------------------------------------------------------
+Write-Host ""
+Write-Host "-- Scenario: open markers injection --"
+
+$tmp5 = Join-Path $env:TEMP ("continuity_test_" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))
+New-Item -ItemType Directory -Force -Path $tmp5 | Out-Null
+
+try {
+    Push-Location $tmp5
+    $null = & git init 2>&1
+    $null = & git config user.email "test@example.com" 2>&1
+    $null = & git config user.name "Test" 2>&1
+    $null = & git config core.autocrlf false 2>&1
+    # Write file with CRLF line endings to avoid git CRLF warning
+    [System.IO.File]::WriteAllText((Join-Path $tmp5 "app.ps1"), "# TODO: fix me`r`n# FIXME: broken`r`n")
+    $null = & git add . 2>&1
+    $null = & git commit -m "initial commit" 2>&1
+    Pop-Location
+
+    $json5 = "{`"cwd`":`"$(($tmp5 | ConvertTo-Json).Trim('"'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"normal`"}"
+    $result5 = Invoke-SessionContext -StdinJson $json5
+
+    Assert-True "Exit code 0 (markers)" ($result5.ExitCode -eq 0)
+    Assert-True "Output contains '## Open markers:'" ($result5.Stdout -match "## Open markers:")
+    Assert-True "Output mentions TODO or FIXME" ($result5.Stdout -match "TODO|FIXME")
+} finally {
+    if (Test-Path -LiteralPath $tmp5) {
+        Remove-Item -LiteralPath $tmp5 -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# ------------------------------------------------------------------
+# 7. last-test-status.txt injection
+# ------------------------------------------------------------------
+Write-Host ""
+Write-Host "-- Scenario: last-test-status.txt injection --"
+
+$tmp6 = Join-Path $env:TEMP ("continuity_test_" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))
+New-Item -ItemType Directory -Force -Path $tmp6 | Out-Null
+
+try {
+    Push-Location $tmp6
+    $null = & git init 2>&1
+    $null = & git config user.email "test@example.com" 2>&1
+    $null = & git config user.name "Test" 2>&1
+    "x" | Set-Content (Join-Path $tmp6 "x.txt") -Encoding UTF8
+    $null = & git add . 2>&1
+    $null = & git commit -m "initial commit" 2>&1
+    Pop-Location
+
+    $claudeDir6 = Join-Path $tmp6 ".claude"
+    New-Item -ItemType Directory -Force -Path $claudeDir6 | Out-Null
+    "PASS 10/10" | Set-Content (Join-Path $claudeDir6 "last-test-status.txt") -Encoding UTF8
+
+    $json6 = "{`"cwd`":`"$(($tmp6 | ConvertTo-Json).Trim('"'))`",`"hook_event_name`":`"SessionStart`",`"source`":`"normal`"}"
+    $result6 = Invoke-SessionContext -StdinJson $json6
+
+    Assert-True "Exit code 0 (test-status)" ($result6.ExitCode -eq 0)
+    Assert-True "Output contains '## Last recorded test status'" ($result6.Stdout -match "## Last recorded test status")
+    Assert-True "Output contains test status content" ($result6.Stdout -match "PASS 10/10")
+} finally {
+    if (Test-Path -LiteralPath $tmp6) {
+        Remove-Item -LiteralPath $tmp6 -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 

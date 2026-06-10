@@ -36,6 +36,9 @@ function Main {
     }
 
     $gitOutput = @()
+    $projectMapOutput = @()
+    $markersOutput = @()
+    $testStatusOutput = @()
     $handoffOutput = @()
 
     # --- Git context ---
@@ -103,6 +106,100 @@ function Main {
                 }
             }
         }
+
+        # --- TODO/FIXME open markers (fast count + top 3 files) ---
+        # Run git grep via a background job to allow timeout (~3 s)
+        $markerCount = 0
+        $topFiles = @()
+        try {
+            $job = Start-Job -ScriptBlock {
+                param($root)
+                & git -C $root grep -I -n -E "TODO|FIXME" 2>$null
+            } -ArgumentList $repoRoot
+
+            $finished = Wait-Job -Job $job -Timeout 3
+            if ($null -ne $finished) {
+                $grepLines = Receive-Job -Job $job
+                Remove-Job -Job $job -Force
+                if ($null -ne $grepLines) {
+                    $grepArr = @($grepLines)
+                    $markerCount = $grepArr.Count
+                    if ($markerCount -gt 0) {
+                        # Extract unique file paths (field before first colon)
+                        $files = $grepArr | ForEach-Object {
+                            $parts = $_ -split ":", 2
+                            if ($parts.Count -ge 1) { $parts[0] }
+                        } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+                        $topFiles = @($files) | Select-Object -First 3
+                    }
+                }
+            } else {
+                Stop-Job -Job $job
+                Remove-Job -Job $job -Force
+            }
+        } catch { }
+
+        if ($markerCount -gt 0) {
+            $markersOutput += ""
+            $markersOutput += "## Open markers: $markerCount TODO/FIXME on this branch"
+            foreach ($f in $topFiles) {
+                $markersOutput += "  $f"
+            }
+        }
+    }
+
+    # --- Project map ---
+    $projectMapPath = Join-Path $cwd ".claude\project-map.md"
+    if (Test-Path -LiteralPath $projectMapPath) {
+        $mapContent = $null
+        try {
+            $mapContent = Get-Content -LiteralPath $projectMapPath -Encoding UTF8 -ErrorAction Stop
+        } catch { }
+
+        if ($null -ne $mapContent) {
+            $lines = @($mapContent)
+            $shown = $lines | Select-Object -First 120
+            $projectMapOutput += ""
+            $projectMapOutput += "## Project map"
+            $projectMapOutput += ""
+            foreach ($line in $shown) {
+                $projectMapOutput += $line
+            }
+            if ($lines.Count -gt 120) {
+                $extra = $lines.Count - 120
+                $projectMapOutput += "(+$extra lines truncated)"
+            }
+        }
+    }
+
+    # --- Last test status ---
+    $testStatusPath = Join-Path $cwd ".claude\last-test-status.txt"
+    if (Test-Path -LiteralPath $testStatusPath) {
+        $fileAge = $null
+        try {
+            $fileAge = (Get-Item -LiteralPath $testStatusPath).LastWriteTime
+        } catch { }
+
+        $tooOld = $true
+        if ($null -ne $fileAge) {
+            $diff = (Get-Date) - $fileAge
+            if ($diff.TotalDays -lt 7) {
+                $tooOld = $false
+            }
+        }
+
+        if (-not $tooOld) {
+            $firstLine = $null
+            try {
+                $firstLine = Get-Content -LiteralPath $testStatusPath -Encoding UTF8 -TotalCount 1 -ErrorAction Stop
+            } catch { }
+
+            if (-not [string]::IsNullOrWhiteSpace($firstLine)) {
+                $testStatusOutput += ""
+                $testStatusOutput += "## Last recorded test status"
+                $testStatusOutput += $firstLine
+            }
+        }
     }
 
     # --- Handoff file ---
@@ -143,12 +240,16 @@ function Main {
         }
     }
 
-    # Emit only if there is something to inject
-    if ($gitOutput.Count -gt 0 -or $handoffOutput.Count -gt 0) {
-        foreach ($line in $gitOutput) {
-            Write-Output $line
-        }
-        foreach ($line in $handoffOutput) {
+    # Emit in order: git context, project map, open markers, test status, pending handoff
+    $allOutput = @()
+    foreach ($line in $gitOutput)        { $allOutput += $line }
+    foreach ($line in $projectMapOutput) { $allOutput += $line }
+    foreach ($line in $markersOutput)    { $allOutput += $line }
+    foreach ($line in $testStatusOutput) { $allOutput += $line }
+    foreach ($line in $handoffOutput)    { $allOutput += $line }
+
+    if ($allOutput.Count -gt 0) {
+        foreach ($line in $allOutput) {
             Write-Output $line
         }
     }

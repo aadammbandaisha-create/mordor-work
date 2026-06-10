@@ -12,6 +12,7 @@ $SkillsDir = Join-Path $ClaudeDir "skills"
 $TargetScript = Join-Path $ScriptsDir "session-context.ps1"
 $TargetHandoff = Join-Path $SkillsDir "handoff"
 $TargetCloseOut = Join-Path $SkillsDir "close-out"
+$TargetMap = Join-Path $SkillsDir "map"
 
 function Read-Settings {
     param([string]$Path)
@@ -110,11 +111,12 @@ Write-Host "Backup:   $backup"
 Write-Host "Scripts:  $TargetScript"
 Write-Host "Skills:   $TargetHandoff"
 Write-Host "          $TargetCloseOut"
+Write-Host "          $TargetMap"
 Write-Host "Sentinel: $Sentinel"
 Write-Host ""
 Write-Host "Changes:"
-Write-Host "  SessionStart hook -> injects git context + pending handoff into each session"
-Write-Host "  Skills: handoff, close-out"
+Write-Host "  SessionStart hook -> injects git context, project map, open markers, test status, pending handoff"
+Write-Host "  Skills: handoff, close-out, map"
 Write-Host ""
 
 if (-not $Yes) {
@@ -127,9 +129,10 @@ if (-not $Yes) {
 
 Copy-Item -LiteralPath (Join-Path $Here "scripts\session-context.ps1") -Destination $TargetScript -Force
 
-New-Item -ItemType Directory -Force -Path $TargetHandoff, $TargetCloseOut | Out-Null
+New-Item -ItemType Directory -Force -Path $TargetHandoff, $TargetCloseOut, $TargetMap | Out-Null
 Copy-Item -LiteralPath (Join-Path $Here "skills\handoff\SKILL.md") -Destination (Join-Path $TargetHandoff "SKILL.md") -Force
 Copy-Item -LiteralPath (Join-Path $Here "skills\close-out\SKILL.md") -Destination (Join-Path $TargetCloseOut "SKILL.md") -Force
+Copy-Item -LiteralPath (Join-Path $Here "skills\map\SKILL.md") -Destination (Join-Path $TargetMap "SKILL.md") -Force
 
 try {
     $proposed | ConvertFrom-Json -ErrorAction Stop | Out-Null
