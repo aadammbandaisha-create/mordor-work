@@ -1,14 +1,24 @@
 [CmdletBinding()]
 param(
     [int]$Days = 1,
-    [string]$OutDir = ""
+    [string]$OutDir = "",
+    [switch]$Narrate,
+    [switch]$Speak,
+    [switch]$Play
 )
 
 # Daily digest of Claude Code activity, generated from local transcripts.
 # Run manually or via Windows Task Scheduler (registered by install.ps1).
-# No AI calls. Always exits 0.
+# -Narrate: also write a spoken-word narration to YYYY-MM-DD.narration.txt
+# -Speak  : implies -Narrate; also render a WAV via Windows SAPI (no install required)
+# -Play   : implies -Speak; immediately play the WAV through the default audio device
+# Always exits 0.
 
 $ErrorActionPreference = "SilentlyContinue"
+
+# -Play implies -Speak; -Speak implies -Narrate
+if ($Play)   { $Speak   = $true }
+if ($Speak)  { $Narrate = $true }
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $env:USERPROFILE ".claude\digests"
@@ -316,6 +326,173 @@ try {
     Write-Host $outFile
 } catch {
     Write-Host "ERROR: could not write digest to $outFile - $($_.Exception.Message)"
+}
+
+# ---- narration / TTS pipeline (only when -Narrate or -Speak or -Play) ----
+if ($Narrate) {
+    $narrationFile = Join-Path $OutDir "$todayStr.narration.txt"
+    $wavFile       = Join-Path $OutDir "$todayStr.wav"
+    $narration     = ""
+
+    # Try to produce the narration via the claude CLI.
+    # We write the digest to a temp file to avoid quoting nightmares.
+    $claudeFound = $false
+    $claudeExe   = ""
+
+    try {
+        $claudeCmd = Get-Command claude -ErrorAction Stop
+        $claudeFound = $true
+        $claudeExe = $claudeCmd.Source
+    } catch {}
+
+    # If Get-Command resolved a .ps1 wrapper, substitute the sibling .cmd wrapper.
+    # cmd.exe cannot execute a raw .ps1 path (PATHEXT does not include .ps1),
+    # so running it via cmd /c would silently produce 0 bytes of output.
+    if ($claudeFound -and [System.IO.Path]::GetExtension($claudeExe) -ieq '.ps1') {
+        $cmdPath = $claudeExe -replace '\.ps1$', '.cmd'
+        if (Test-Path -LiteralPath $cmdPath) {
+            $claudeExe = $cmdPath
+        } else {
+            # No sibling .cmd -- clear so we fall through to the npm probe
+            $claudeFound = $false
+            $claudeExe = ""
+        }
+    }
+
+    # Also probe the npm global prefix path if not found above.
+    # npm bin -g was removed in npm 9+; use npm prefix -g instead.
+    if (-not $claudeFound) {
+        $npmPrefix = ""
+        try {
+            $npmPrefix = & npm.cmd prefix -g 2>$null
+        } catch {}
+        # Sanity-check: must look like an absolute Windows path (e.g. C:\...)
+        if (-not [string]::IsNullOrWhiteSpace($npmPrefix) -and $npmPrefix -match '^[A-Za-z]:\\') {
+            $candidate = Join-Path $npmPrefix "claude.cmd"
+            if (Test-Path -LiteralPath $candidate) {
+                $claudeFound = $true
+                $claudeExe = $candidate
+            }
+            if (-not $claudeFound) {
+                $candidate2 = Join-Path $npmPrefix "claude"
+                if (Test-Path -LiteralPath $candidate2) {
+                    $claudeFound = $true
+                    $claudeExe = $candidate2
+                }
+            }
+        }
+    }
+
+    if ($claudeFound -and -not [string]::IsNullOrWhiteSpace($claudeExe)) {
+        # Write digest to a temp file so we can feed it as stdin content
+        $tmpDigest = [System.IO.Path]::GetTempFileName()
+        try {
+            $utf8NoBom2 = New-Object System.Text.UTF8Encoding $false
+            [System.IO.File]::WriteAllText($tmpDigest, $content, $utf8NoBom2)
+
+            $prompt = "Rewrite this dev activity digest as a brief, natural spoken-word morning briefing, 150-250 words, second person, no markdown, no headers, just what I'd want read to me with coffee. Digest follows:"
+
+            # Build the full prompt string with digest appended
+            $fullPrompt = $prompt + "`n`n" + $content
+
+            # Write prompt+digest to another temp file and pipe it in via Get-Content
+            $tmpPrompt = [System.IO.Path]::GetTempFileName()
+            [System.IO.File]::WriteAllText($tmpPrompt, $fullPrompt, $utf8NoBom2)
+
+            # Use cmd /c to pipe the temp file into claude -p via stdin
+            # We pass the prompt text directly as the -p argument and pipe nothing,
+            # to keep things simple and PS5.1-safe.
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = "cmd.exe"
+            # Escape paths for cmd /c: wrap in double quotes inside the outer quotes
+            $safeExe    = $claudeExe.Replace('"', '')
+            $safePrompt = $fullPrompt.Replace('"', "'").Replace("`n", " ").Replace("`r", "")
+            # Use temp file approach: write prompt to temp, pass as -p arg via file read
+            # Actually use stdin pipe: cmd /c type tmpPrompt | claude -p <prompt>
+            # Simplest safe approach: pass -p with the prompt, pipe the digest on stdin
+            $psi.Arguments = "/c type `"$tmpPrompt`" | `"$safeExe`" -p `"$prompt`""
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.CreateNoWindow = $true
+
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $claudeOutput = $proc.StandardOutput.ReadToEnd()
+            $proc.WaitForExit(60000) | Out-Null
+
+            if ($proc.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($claudeOutput)) {
+                $narration = $claudeOutput.Trim()
+            } else {
+                Write-Error "claude CLI returned exit $($proc.ExitCode); falling back to markdown-strip narration"
+                $claudeFound = $false
+            }
+        } catch {
+            Write-Error "claude CLI invocation failed: $($_.Exception.Message); falling back"
+            $claudeFound = $false
+        } finally {
+            if (Test-Path -LiteralPath $tmpDigest) { Remove-Item -LiteralPath $tmpDigest -Force -ErrorAction SilentlyContinue }
+            if (Test-Path -LiteralPath $tmpPrompt) { Remove-Item -LiteralPath $tmpPrompt -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    # Fallback: strip markdown from the digest into plain prose
+    if (-not $claudeFound -or [string]::IsNullOrWhiteSpace($narration)) {
+        $plain = $content
+        # Remove markdown headings
+        $plain = $plain -replace '(?m)^#{1,6}\s+', ''
+        # Remove bold/italic markers
+        $plain = $plain -replace '\*{1,2}([^*]+)\*{1,2}', '$1'
+        $plain = $plain -replace '_{1,2}([^_]+)_{1,2}', '$1'
+        # Remove inline code
+        $plain = $plain -replace '`([^`]+)`', '$1'
+        # Remove horizontal rules
+        $plain = $plain -replace '(?m)^---+\s*$', ''
+        # Remove list bullets
+        $plain = $plain -replace '(?m)^\s*[-*]\s+', ''
+        # Collapse multiple blank lines
+        $plain = $plain -replace '(\r?\n){3,}', "`n`n"
+        $narration = $plain.Trim()
+    }
+
+    # Write narration file
+    try {
+        $utf8NoBomN = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($narrationFile, $narration, $utf8NoBomN)
+        Write-Host $narrationFile
+    } catch {
+        Write-Error "ERROR: could not write narration to $narrationFile - $($_.Exception.Message)"
+    }
+
+    # ---- TTS via Windows SAPI (only when -Speak or -Play) ----
+    if ($Speak -and -not [string]::IsNullOrWhiteSpace($narration)) {
+        try {
+            Add-Type -AssemblyName System.Speech -ErrorAction Stop
+
+            $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+            try {
+                # Always write WAV first
+                $synth.SetOutputToWaveFile($wavFile)
+                $synth.Speak($narration)
+                $synth.SetOutputToNull()
+                Write-Host $wavFile
+            } finally {
+                try { $synth.Dispose() } catch {}
+            }
+
+            # Immediate playback only if -Play was given
+            if ($Play -and (Test-Path -LiteralPath $wavFile)) {
+                $synthPlay = New-Object System.Speech.Synthesis.SpeechSynthesizer
+                try {
+                    $synthPlay.SetOutputToDefaultAudioDevice()
+                    $synthPlay.Speak($narration)
+                } finally {
+                    try { $synthPlay.Dispose() } catch {}
+                }
+            }
+        } catch {
+            Write-Error "SAPI TTS failed: $($_.Exception.Message)"
+        }
+    }
 }
 
 exit 0
