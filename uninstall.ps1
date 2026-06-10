@@ -19,7 +19,8 @@ if ($Yes -and $RemoveState) {
 }
 
 $OtherMods = @("token-economy", "agent-roles", "mission-control", "web-dash", "continuity",
-    "format-on-edit", "daily-digest", "visual-verify", "self-improve", "mcp-pack")
+    "format-on-edit", "check-on-edit", "daily-digest", "visual-verify", "self-improve",
+    "mcp-pack", "scribe", "review-gate", "phase1-guard")
 foreach ($mod in $OtherMods) {
     $script = Join-Path $Root "harness\$mod\uninstall.ps1"
     if (Test-Path -LiteralPath $script) {

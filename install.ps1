@@ -2,7 +2,8 @@
 param(
     [ValidateSet("harness", "all", "work", "windows-state-indicator", "token-economy", "agent-roles",
         "mission-control", "web-dash", "continuity", "format-on-edit", "daily-digest",
-        "visual-verify", "self-improve", "mcp-pack")]
+        "visual-verify", "self-improve", "mcp-pack", "scribe", "check-on-edit",
+        "review-gate", "phase1-guard")]
     [string]$Mode = "harness",
     [switch]$Yes
 )
@@ -24,14 +25,16 @@ function Invoke-ModInstall {
 }
 
 $AllMods = @("windows-state-indicator", "token-economy", "agent-roles",
-    "mission-control", "web-dash", "continuity", "format-on-edit", "daily-digest",
-    "visual-verify", "self-improve", "mcp-pack")
+    "mission-control", "web-dash", "continuity", "format-on-edit", "check-on-edit",
+    "daily-digest", "visual-verify", "self-improve", "mcp-pack", "scribe",
+    "review-gate", "phase1-guard")
 
 # Muted profile for a workstation: no network-serving dashboard. Future
 # life-director mods (inboxes, agenda, voice briefs) stay out of this list.
 $WorkMods = @("windows-state-indicator", "token-economy", "agent-roles",
-    "mission-control", "continuity", "format-on-edit", "daily-digest",
-    "visual-verify", "self-improve", "mcp-pack")
+    "mission-control", "continuity", "format-on-edit", "check-on-edit",
+    "daily-digest", "visual-verify", "self-improve", "mcp-pack", "scribe",
+    "review-gate", "phase1-guard")
 
 switch ($Mode) {
     "harness" { foreach ($mod in $AllMods) { Invoke-ModInstall $mod } }
