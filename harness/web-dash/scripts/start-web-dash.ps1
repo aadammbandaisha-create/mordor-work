@@ -8,13 +8,23 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ClaudeDir = Join-Path $env:USERPROFILE ".claude"
-$ServerJs = Join-Path $ClaudeDir "scripts\webdash\server.js"
-$PidFile  = Join-Path $ClaudeDir "webdash.pid"
+$ServerJs  = Join-Path $ClaudeDir "scripts\webdash\server.js"
+$PidFile   = Join-Path $ClaudeDir "webdash.pid"
+$TokenFile = Join-Path $ClaudeDir "webdash-token"
 
 if (-not (Test-Path -LiteralPath $ServerJs)) {
     Write-Host "server.js not found at $ServerJs"
     Write-Host "Run install.ps1 first."
     exit 1
+}
+
+# Ensure webdash-token exists; create with random GUID if missing.
+# Use WriteAllText with UTF8Encoding(false) to avoid BOM.
+if (-not (Test-Path -LiteralPath $TokenFile)) {
+    $token = [System.Guid]::NewGuid().ToString()
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($TokenFile, $token, $utf8NoBom)
+    Write-Host "Created webdash-token at $TokenFile"
 }
 
 $bindAddr = if ($Lan) { "0.0.0.0" } else { "127.0.0.1" }
@@ -37,8 +47,20 @@ if ($Lan) {
     } catch {}
     if ($lanIp) {
         Write-Host "LAN URL:      http://$lanIp`:$Port"
-        Write-Host "NOTE: LAN mode exposes dashboard to your local network unauthenticated."
     }
+
+    # Read token for display (created above if it was missing)
+    $tokenDisplay = ""
+    try {
+        $tokenDisplay = ([System.IO.File]::ReadAllText($TokenFile)).Trim()
+    } catch {}
+    Write-Host ""
+    Write-Host "WARNING: LAN mode enabled."
+    Write-Host "  The command deck can EXECUTE prompts on this machine from the network."
+    Write-Host "  The token below is the only lock protecting dispatch endpoints."
+    Write-Host "  Token: $tokenDisplay"
+    Write-Host "  Keep this token private. Revoke by deleting $TokenFile and restarting."
+    Write-Host ""
 }
 
 if ($Background) {

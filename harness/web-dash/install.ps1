@@ -3,8 +3,8 @@ param([switch]$Yes)
 
 $ErrorActionPreference = "Stop"
 
-$Sentinel = "mordor:web-dash"
-$Here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Sentinel     = "mordor:web-dash"
+$Here         = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ClaudeDir    = Join-Path $env:USERPROFILE ".claude"
 $ScriptsDir   = Join-Path $ClaudeDir "scripts"
 $WebdashDir   = Join-Path $ScriptsDir "webdash"
@@ -12,6 +12,7 @@ $TargetServer = Join-Path $WebdashDir "server.js"
 $TargetStart  = Join-Path $ScriptsDir "start-web-dash.ps1"
 $TargetStop   = Join-Path $ScriptsDir "stop-web-dash.ps1"
 $PromptsFile  = Join-Path $ClaudeDir "webdash-prompts.json"
+$ProjectsFile = Join-Path $ClaudeDir "webdash-projects.json"
 
 $DefaultPrompts = @(
     [pscustomobject]@{
@@ -32,6 +33,20 @@ $DefaultPrompts = @(
     }
 )
 
+# Determine the default project path for webdash-projects.json seed.
+# If C:\Users\qq\Desktop\mordor exists use it, else fall back to harness path.
+$DefaultProjectPath = "C:\Users\qq\Desktop\mutwo-windows-claude-harness"
+if (Test-Path -LiteralPath "C:\Users\qq\Desktop\mordor") {
+    $DefaultProjectPath = "C:\Users\qq\Desktop\mordor"
+}
+
+$DefaultProjects = @(
+    [pscustomobject]@{
+        label = "mordor harness"
+        path  = $DefaultProjectPath
+    }
+)
+
 Write-Host ""
 Write-Host "Install web-dash"
 Write-Host "Sentinel: $Sentinel"
@@ -41,12 +56,20 @@ Write-Host "  $TargetServer"
 Write-Host "  $TargetStart"
 Write-Host "  $TargetStop"
 Write-Host ""
+
 $promptsNote = if (Test-Path -LiteralPath $PromptsFile) {
     "$PromptsFile  (already exists - will NOT overwrite)"
 } else {
     "$PromptsFile  (will seed with 4 default prompts)"
 }
-Write-Host "Prompts: $promptsNote"
+Write-Host "Prompts:  $promptsNote"
+
+$projectsNote = if (Test-Path -LiteralPath $ProjectsFile) {
+    "$ProjectsFile  (already exists - will NOT overwrite)"
+} else {
+    "$ProjectsFile  (will seed with 1 default entry: $DefaultProjectPath)"
+}
+Write-Host "Projects: $projectsNote"
 Write-Host ""
 Write-Host "No changes to settings.json."
 Write-Host ""
@@ -61,15 +84,22 @@ if (-not $Yes) {
 
 New-Item -ItemType Directory -Force -Path $ClaudeDir, $ScriptsDir, $WebdashDir | Out-Null
 
-Copy-Item -LiteralPath (Join-Path $Here "scripts\webdash\server.js") -Destination $TargetServer -Force
-Copy-Item -LiteralPath (Join-Path $Here "scripts\start-web-dash.ps1") -Destination $TargetStart -Force
-Copy-Item -LiteralPath (Join-Path $Here "scripts\stop-web-dash.ps1") -Destination $TargetStop -Force
+Copy-Item -LiteralPath (Join-Path $Here "scripts\webdash\server.js")   -Destination $TargetServer -Force
+Copy-Item -LiteralPath (Join-Path $Here "scripts\start-web-dash.ps1") -Destination $TargetStart  -Force
+Copy-Item -LiteralPath (Join-Path $Here "scripts\stop-web-dash.ps1")  -Destination $TargetStop   -Force
 
 if (-not (Test-Path -LiteralPath $PromptsFile)) {
-    $DefaultPrompts | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $PromptsFile -Encoding UTF8
+    ConvertTo-Json -InputObject @($DefaultPrompts) -Depth 5 | Set-Content -LiteralPath $PromptsFile -Encoding UTF8
     Write-Host "Created $PromptsFile with 4 default prompts."
 } else {
     Write-Host "Skipped prompts file (already exists)."
+}
+
+if (-not (Test-Path -LiteralPath $ProjectsFile)) {
+    ConvertTo-Json -InputObject @($DefaultProjects) -Depth 5 | Set-Content -LiteralPath $ProjectsFile -Encoding UTF8
+    Write-Host "Created $ProjectsFile with 1 default project entry ($DefaultProjectPath)."
+} else {
+    Write-Host "Skipped projects file (already exists)."
 }
 
 Write-Host ""

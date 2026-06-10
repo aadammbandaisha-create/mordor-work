@@ -1,19 +1,41 @@
 "use strict";
 // web-dash server.js
-// Single-file Node 24 HTTP dashboard. Zero npm deps: http, fs, path, os only.
+// Single-file Node 24 HTTP dashboard + command deck. Zero npm deps: http, fs, path, os, crypto, child_process only.
 // Env overrides:
-//   CLAUDE_DIR   - defaults to os.homedir()/.claude
-//   WEBDASH_PORT - defaults to 7777
-//   WEBDASH_BIND - defaults to 127.0.0.1
+//   CLAUDE_DIR               - defaults to os.homedir()/.claude
+//   WEBDASH_PORT             - defaults to 7777
+//   WEBDASH_BIND             - defaults to 127.0.0.1
+//   WEBDASH_CLAUDE_EXE       - path to claude binary (default: C:\Users\qq\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe)
+//   WEBDASH_CLAUDE_ARGS_PRE  - JSON array of args to prepend before [-p, prompt, --output-format, text]; for test stubs only
 
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+const http   = require("http");
+const fs     = require("fs");
+const path   = require("path");
+const os     = require("os");
+const crypto = require("crypto");
+const cp     = require("child_process");
 
 const CLAUDE_DIR = process.env.CLAUDE_DIR || path.join(os.homedir(), ".claude");
-const PORT = parseInt(process.env.WEBDASH_PORT || "7777", 10);
-const BIND = process.env.WEBDASH_BIND || "127.0.0.1";
+const PORT  = parseInt(process.env.WEBDASH_PORT || "7777", 10);
+const BIND  = process.env.WEBDASH_BIND || "127.0.0.1";
+const CLAUDE_EXE = process.env.WEBDASH_CLAUDE_EXE ||
+  "C:\\Users\\qq\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe";
+
+// Optional args prepended before [-p, prompt, ...]; used only for test stubs.
+// E.g. set WEBDASH_CLAUDE_ARGS_PRE='["C:\\stub.js"]' and WEBDASH_CLAUDE_EXE='node'
+var CLAUDE_ARGS_PRE = [];
+(function() {
+  var pre = process.env.WEBDASH_CLAUDE_ARGS_PRE;
+  if (pre) {
+    try { CLAUDE_ARGS_PRE = JSON.parse(pre); } catch (e) {}
+  }
+  if (!Array.isArray(CLAUDE_ARGS_PRE)) CLAUDE_ARGS_PRE = [];
+})();
+
+const JOBS_LOG   = path.join(CLAUDE_DIR, "webdash-jobs.log");
+const TOKEN_FILE = path.join(CLAUDE_DIR, "webdash-token");
+const MAX_OUTPUT = 16 * 1024;  // 16 KB rolling cap per job
+const MAX_JOBS   = 50;
 
 // USD per million tokens: in, out, cache_write, cache_read
 const PRICING = {
@@ -25,7 +47,7 @@ const PRICING = {
 function modelFamily(modelId) {
   if (!modelId) return "sonnet";
   const m = String(modelId).toLowerCase();
-  if (m.indexOf("opus") !== -1) return "opus";
+  if (m.indexOf("opus")  !== -1) return "opus";
   if (m.indexOf("haiku") !== -1) return "haiku";
   return "sonnet";
 }
@@ -130,7 +152,7 @@ function readSessions() {
     const cwdVal = data.cwd || "";
     const cwdLeaf = cwdVal ? path.basename(cwdVal) || cwdVal : sessionId;
     const updatedAt = data.updated_at || new Date(stat.mtimeMs).toISOString();
-    const updatedMs = (() => {
+    const updatedMs = (function() {
       try { return new Date(updatedAt).getTime(); } catch (e) { return stat.mtimeMs; }
     })();
     sessions.push({
@@ -182,8 +204,8 @@ function readContextFromTranscript(transcriptPath) {
 }
 
 // ---- 7-day spend with 30s cache ----
-let spendCache = null;
-let spendCacheAt = 0;
+var spendCache = null;
+var spendCacheAt = 0;
 const SPEND_CACHE_TTL = 30000;
 
 function computeSpend() {
@@ -254,42 +276,335 @@ function readPrompts() {
   }
 }
 
+// ---- Project allowlist ----
+function readProjects() {
+  const projectsFile = path.join(CLAUDE_DIR, "webdash-projects.json");
+  try {
+    const arr = JSON.parse(readText(projectsFile));
+    if (!Array.isArray(arr)) return [];
+    return arr;
+  } catch (e) {
+    return [];
+  }
+}
+
+// ---- Token auth helpers ----
+function readToken() {
+  try {
+    let t = readText(TOKEN_FILE).trim();
+    return t || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function isLoopback(addr) {
+  if (!addr) return false;
+  return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+}
+
+// Constant-time token comparison. Returns true if equal.
+function safeTokenEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const ba = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+// Returns true if the request is authorized for POST actions.
+function isAuthorized(req) {
+  const remote = (req.socket && req.socket.remoteAddress) || "";
+  if (isLoopback(remote)) return true;  // loopback: token optional
+  const stored = readToken();
+  if (!stored) return false;  // token file missing => reject non-loopback
+  const qParts = (req.url || "").split("?");
+  const qs = qParts.length > 1 ? qParts[1] : "";
+  const params = {};
+  qs.split("&").forEach(function(part) {
+    const kv = part.split("=");
+    if (kv.length === 2) params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+  });
+  const provided = req.headers["x-webdash-token"] || params["token"] || "";
+  return safeTokenEqual(stored, provided);
+}
+
+// ---- Job store ----
+var jobs = [];  // array of job objects, newest first
+
+function makeId() {
+  return crypto.randomBytes(8).toString("hex");
+}
+
+function appendJobLog(job) {
+  const line = JSON.stringify({
+    id:        job.id,
+    prompt:    job.prompt,
+    project:   job.project,
+    status:    job.status,
+    startedAt: job.startedAt,
+    endedAt:   job.endedAt,
+    exitCode:  job.exitCode
+  }) + "\n";
+  try {
+    fs.appendFileSync(JOBS_LOG, line, "utf8");
+  } catch (e) {
+    // non-fatal: log write failure should not break the server
+  }
+}
+
+function capOutput(existing, chunk) {
+  const combined = existing + chunk;
+  if (combined.length <= MAX_OUTPUT) return combined;
+  return combined.slice(combined.length - MAX_OUTPUT);
+}
+
+function pruneJobs() {
+  if (jobs.length > MAX_JOBS) {
+    const dropped = jobs.slice(MAX_JOBS);
+    jobs = jobs.slice(0, MAX_JOBS);
+    for (const job of dropped) {
+      if (job.status === "running" && job._proc && job._proc.pid) {
+        try {
+          const tk = cp.spawn("taskkill", ["/PID", String(job._proc.pid), "/T", "/F"], { windowsHide: true, shell: false });
+          tk.on("error", function() {});
+        } catch (e) {}
+      }
+    }
+  }
+}
+
 // ---- /api/state handler ----
 function handleApiState(res) {
   const sessions = readSessions();
   const newestSession = sessions.length > 0 ? sessions[0] : null;
   const contextRaw = newestSession ? readContextFromTranscript(newestSession.transcriptPath) : null;
   const context = contextRaw || { pct: 0, usedTokens: 0, limit: 200000 };
-  const spend = computeSpend();
+  const spend   = computeSpend();
   const prompts = readPrompts();
+  const rawProjects = readProjects();
+  const projects = rawProjects.map(function(p, i) {
+    return { index: i, label: p.label || "", path: p.path || "" };
+  });
 
   const payload = {
     sessions: sessions.slice(0, 20).map(function(s) {
       return {
-        id: s.id,
-        title: s.title,
-        state: s.state,
-        summary: s.summary,
-        cwd: s.cwd,
+        id:         s.id,
+        title:      s.title,
+        state:      s.state,
+        summary:    s.summary,
+        cwd:        s.cwd,
         ageSeconds: s.ageSeconds,
-        updatedAt: s.updatedAt
+        updatedAt:  s.updatedAt
       };
     }),
-    context: context,
-    spend: spend,
-    prompts: prompts
+    context:  context,
+    spend:    spend,
+    prompts:  prompts,
+    projects: projects
   };
 
   const body = JSON.stringify(payload);
   res.writeHead(200, {
-    "Content-Type": "application/json",
+    "Content-Type":   "application/json",
     "Content-Length": Buffer.byteLength(body),
-    "Cache-Control": "no-cache"
+    "Cache-Control":  "no-cache"
   });
   res.end(body);
 }
 
-// ---- HTML page ----
+// ---- /api/dispatch handler ----
+function handleDispatch(req, res) {
+  if (!isAuthorized(req)) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Unauthorized" }));
+    return;
+  }
+
+  let body = "";
+  let tooLarge = false;
+  req.on("data", function(chunk) {
+    if (tooLarge) return;
+    body += chunk;
+    if (body.length > 8192) {
+      tooLarge = true;
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Request too large" }));
+      req.destroy();
+    }
+  });
+  req.on("end", function() {
+    if (tooLarge) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch (e) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid JSON body" }));
+      return;
+    }
+
+    const prompt = parsed.prompt;
+    const projectIndex = parsed.projectIndex;
+
+    if (typeof prompt !== "string" || prompt.trim() === "") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "prompt must be a non-empty string" }));
+      return;
+    }
+    if (prompt.length > 4000) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "prompt must be <= 4000 characters" }));
+      return;
+    }
+    if (typeof projectIndex !== "number" || !Number.isInteger(projectIndex)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "projectIndex must be an integer" }));
+      return;
+    }
+
+    const allProjects = readProjects();
+    if (projectIndex < 0 || projectIndex >= allProjects.length) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "projectIndex out of range" }));
+      return;
+    }
+
+    const project = allProjects[projectIndex];
+    const cwd     = project.path;
+
+    const id = makeId();
+    const job = {
+      id:        id,
+      prompt:    prompt.slice(0, 200),
+      project:   { label: project.label, path: project.path },
+      status:    "running",
+      startedAt: new Date().toISOString(),
+      endedAt:   null,
+      exitCode:  null,
+      output:    "",
+      _proc:     null
+    };
+    jobs.unshift(job);
+    pruneJobs();
+
+    const args = CLAUDE_ARGS_PRE.concat(["-p", prompt, "--output-format", "text"]);
+    let child;
+    try {
+      child = cp.spawn(CLAUDE_EXE, args, {
+        cwd:         cwd,
+        windowsHide: true,
+        shell:       false
+      });
+    } catch (spawnErr) {
+      job.status   = "error";
+      job.endedAt  = new Date().toISOString();
+      job.exitCode = -1;
+      job.output   = "Failed to spawn: " + String(spawnErr);
+      appendJobLog(job);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ id: id }));
+      return;
+    }
+
+    job._proc = child;
+
+    child.stdout.on("data", function(chunk) {
+      job.output = capOutput(job.output, chunk.toString("utf8"));
+    });
+    child.stderr.on("data", function(chunk) {
+      job.output = capOutput(job.output, chunk.toString("utf8"));
+    });
+    child.on("error", function(err) {
+      job.status   = "error";
+      job.endedAt  = new Date().toISOString();
+      job.exitCode = -1;
+      job.output   = capOutput(job.output, "\n[spawn error] " + String(err));
+      job._proc    = null;
+      appendJobLog(job);
+    });
+    child.on("close", function(code) {
+      if (job.status === "killed") {
+        // already marked by kill handler
+        job._proc = null;
+        return;
+      }
+      job.status   = (code === 0) ? "done" : "error";
+      job.endedAt  = new Date().toISOString();
+      job.exitCode = code;
+      job._proc    = null;
+      appendJobLog(job);
+    });
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ id: id }));
+  });
+}
+
+// ---- /api/jobs handler ----
+function handleGetJobs(res) {
+  const out = jobs.map(function(j) {
+    return {
+      id:        j.id,
+      prompt:    j.prompt,
+      project:   j.project,
+      status:    j.status,
+      startedAt: j.startedAt,
+      endedAt:   j.endedAt,
+      exitCode:  j.exitCode,
+      output:    j.output
+    };
+  });
+  const body = JSON.stringify({ jobs: out });
+  res.writeHead(200, {
+    "Content-Type":   "application/json",
+    "Content-Length": Buffer.byteLength(body),
+    "Cache-Control":  "no-cache"
+  });
+  res.end(body);
+}
+
+// ---- /api/jobs/<id>/kill handler ----
+function handleKillJob(req, res, jobId) {
+  if (!isAuthorized(req)) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Unauthorized" }));
+    return;
+  }
+
+  const job = jobs.find(function(j) { return j.id === jobId; });
+  if (!job) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Job not found" }));
+    return;
+  }
+  if (job.status !== "running") {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Job is not running" }));
+    return;
+  }
+
+  job.status  = "killed";
+  job.endedAt = new Date().toISOString();
+  appendJobLog(job);
+
+  if (job._proc) {
+    const pid = job._proc.pid;
+    job._proc = null;
+    // Kill process tree on Windows
+    var tk = cp.spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+      windowsHide: true,
+      shell:       false
+    });
+    tk.on("error", function() {});
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+}
+
+// ---- Inline HTML page ----
 const HTML_PAGE = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -309,6 +624,7 @@ const HTML_PAGE = `<!DOCTYPE html>
     --red: #f85149;
     --working-dot: #3fb950;
     --idle-dot: #8b949e;
+    --amber: #e3a22b;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace; font-size: 14px; line-height: 1.5; }
@@ -331,10 +647,40 @@ const HTML_PAGE = `<!DOCTYPE html>
   .session-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .session-summary { font-size: 12px; color: var(--text); margin-top: 6px; white-space: pre-wrap; word-break: break-word; max-height: 80px; overflow: hidden; }
   .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  /* Prompt deck */
   .prompt-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .prompt-pair { display: flex; gap: 4px; }
   .prompt-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; padding: 8px 14px; font-size: 13px; transition: background 0.15s, border-color 0.15s; }
   .prompt-btn:hover { background: var(--border); border-color: var(--accent); }
   .prompt-btn.copied { background: var(--green); color: #000; border-color: var(--green); }
+  .prompt-btn.run-btn { background: #1c2432; border-color: var(--accent); color: var(--accent); }
+  .prompt-btn.run-btn:hover { background: #243347; }
+  /* Dispatch controls */
+  .dispatch-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+  .dispatch-row select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 7px 10px; font-size: 13px; cursor: pointer; min-width: 180px; }
+  .dispatch-row select:focus { outline: none; border-color: var(--accent); }
+  .dispatch-textarea { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 8px 12px; font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; margin-bottom: 8px; }
+  .dispatch-textarea:focus { outline: none; border-color: var(--accent); }
+  .run-dispatch-btn { background: var(--accent); border: 1px solid var(--accent); border-radius: 6px; color: #0d1117; cursor: pointer; padding: 8px 18px; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+  .run-dispatch-btn:hover { background: #79b8ff; }
+  .run-dispatch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  /* Job panel */
+  .job-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+  .job-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .job-chip { font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px; letter-spacing: 0.04em; }
+  .job-chip.running { background: var(--amber); color: #000; animation: pulse 1.2s infinite; }
+  .job-chip.done    { background: var(--green); color: #000; }
+  .job-chip.error   { background: var(--red);   color: #fff; }
+  .job-chip.killed  { background: var(--red);   color: #fff; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.55; } }
+  .job-prompt  { font-size: 12px; color: var(--text); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job-project { font-size: 11px; color: var(--muted); }
+  .job-age     { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .job-kill-btn { background: var(--surface); border: 1px solid var(--red); border-radius: 4px; color: var(--red); cursor: pointer; padding: 2px 10px; font-size: 11px; }
+  .job-kill-btn:hover { background: var(--red); color: #fff; }
+  .job-expand-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; padding: 2px 6px; }
+  .job-output { display: none; background: #0d1117; border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin-top: 8px; font-family: monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; color: var(--text); }
+  .job-output.visible { display: block; }
   .banner { display: none; position: fixed; top: 0; left: 0; right: 0; background: var(--red); color: #fff; text-align: center; padding: 8px; font-size: 13px; font-weight: 600; z-index: 10; }
   .banner.visible { display: block; }
   .no-sessions { color: var(--muted); font-size: 13px; padding: 12px 0; }
@@ -364,19 +710,40 @@ const HTML_PAGE = `<!DOCTYPE html>
     </div>
   </section>
   <section>
-    <h2>Prompt Deck</h2>
-    <div class="prompt-grid" id="promptGrid"><span style="color:var(--muted);font-size:13px">No prompts configured.</span></div>
+    <h2>Command Deck</h2>
+    <div class="dispatch-row">
+      <select id="projectSelect"><option value="">-- no projects --</option></select>
+    </div>
+    <textarea class="dispatch-textarea" id="freePrompt" placeholder="Type a prompt or click Run on a deck button..."></textarea>
+    <button class="run-dispatch-btn" id="runFreeBtn" onclick="dispatchFree()">Run</button>
+    <div style="margin-top:16px">
+      <div class="prompt-grid" id="promptGrid"><span style="color:var(--muted);font-size:13px">No prompts configured.</span></div>
+    </div>
+  </section>
+  <section id="jobsSection">
+    <h2>Jobs</h2>
+    <div id="jobList"><div class="no-sessions">No jobs yet.</div></div>
   </section>
 </div>
 <script>
   var state = null;
   var pollTimer = null;
+  var jobPollTimer = null;
+  var jobPollActive = false;
+  var storedToken = localStorage.getItem("webdash_token") || "";
+  var expandedJobs = {};
 
   function fmtAge(sec) {
     if (sec < 60) return sec + "s ago";
     if (sec < 3600) return Math.floor(sec / 60) + "m ago";
     if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
     return Math.floor(sec / 86400) + "d ago";
+  }
+
+  function fmtAgeMs(isoStr) {
+    if (!isoStr) return "";
+    var ms = Date.now() - new Date(isoStr).getTime();
+    return fmtAge(Math.max(0, Math.round(ms / 1000)));
   }
 
   function fmtUsd(v) {
@@ -389,11 +756,171 @@ const HTML_PAGE = `<!DOCTYPE html>
     return "#3fb950";
   }
 
+  function escHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function escAttr(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // ---- project select ----
+  var lastProjectCount = -1;
+  function renderProjects(projects) {
+    if (projects.length === lastProjectCount) return;
+    lastProjectCount = projects.length;
+    var sel = document.getElementById("projectSelect");
+    var saved = localStorage.getItem("webdash_project");
+    var html = projects.length === 0 ? "<option value=\\"\\" disabled>-- no projects configured --</option>" : "";
+    for (var i = 0; i < projects.length; i++) {
+      var p = projects[i];
+      html += "<option value=\\"" + p.index + "\\">" + escHtml(p.label) + " (" + escHtml(p.path) + ")</option>";
+    }
+    sel.innerHTML = html;
+    if (saved !== null) {
+      for (var j = 0; j < sel.options.length; j++) {
+        if (sel.options[j].value === saved) { sel.selectedIndex = j; break; }
+      }
+    }
+    sel.onchange = function() { localStorage.setItem("webdash_project", sel.value); };
+  }
+
+  function selectedProjectIndex() {
+    var sel = document.getElementById("projectSelect");
+    var v = sel.value;
+    if (v === "" || v === null) return null;
+    var n = parseInt(v, 10);
+    return isNaN(n) ? null : n;
+  }
+
+  // ---- dispatch ----
+  function postWithAuth(url, body, callback) {
+    var headers = { "Content-Type": "application/json" };
+    if (storedToken) headers["x-webdash-token"] = storedToken;
+    fetch(url, { method: "POST", headers: headers, body: JSON.stringify(body) })
+      .then(function(r) {
+        if (r.status === 401) {
+          var t = prompt("Enter webdash token (see ~/.claude/webdash-token):");
+          if (t) {
+            storedToken = t;
+            localStorage.setItem("webdash_token", t);
+            postWithAuth(url, body, callback);
+          }
+          return;
+        }
+        r.json().then(function(data) { callback(r.status, data); });
+      })
+      .catch(function(err) { callback(0, { error: String(err) }); });
+  }
+
+  function dispatchPrompt(prompt) {
+    var idx = selectedProjectIndex();
+    if (idx === null) { alert("Select a project first."); return; }
+    postWithAuth("/api/dispatch", { prompt: prompt, projectIndex: idx }, function(status, data) {
+      if (status === 200) {
+        startJobPoll();
+      } else {
+        alert("Dispatch failed: " + (data.error || status));
+      }
+    });
+  }
+
+  function dispatchFree() {
+    var prompt = document.getElementById("freePrompt").value.trim();
+    if (!prompt) { alert("Enter a prompt."); return; }
+    var btn = document.getElementById("runFreeBtn");
+    btn.disabled = true;
+    setTimeout(function() { btn.disabled = false; }, 2000);
+    dispatchPrompt(prompt);
+  }
+
+  // ---- job polling ----
+  function startJobPoll() {
+    jobPollActive = true;
+    if (!jobPollTimer) pollJobs();
+  }
+
+  function stopJobPoll() {
+    jobPollActive = false;
+    if (jobPollTimer) { clearTimeout(jobPollTimer); jobPollTimer = null; }
+  }
+
+  function pollJobs() {
+    jobPollTimer = null;
+    fetch("/api/jobs")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var jobList = data.jobs || [];
+        renderJobs(jobList);
+        var hasRunning = jobList.some(function(j) { return j.status === "running"; });
+        if (hasRunning || jobPollActive) {
+          jobPollTimer = setTimeout(pollJobs, 3000);
+        } else {
+          jobPollActive = false;
+        }
+      })
+      .catch(function() {
+        if (jobPollActive) jobPollTimer = setTimeout(pollJobs, 3000);
+      });
+  }
+
+  function killJob(id) {
+    postWithAuth("/api/jobs/" + id + "/kill", {}, function(status, data) {
+      if (status !== 200) alert("Kill failed: " + (data.error || status));
+      pollJobs();
+    });
+  }
+
+  function toggleOutput(id) {
+    expandedJobs[id] = !expandedJobs[id];
+    pollJobs();
+  }
+
+  function renderJobs(jobList) {
+    var el = document.getElementById("jobList");
+    if (!jobList || jobList.length === 0) {
+      el.innerHTML = "<div class=\\"no-sessions\\">No jobs yet.</div>";
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < jobList.length; i++) {
+      var j = jobList[i];
+      var chipClass = j.status;
+      html += "<div class=\\"job-card\\">";
+      html += "<div class=\\"job-header\\">";
+      html += "<span class=\\"job-chip " + chipClass + "\\">" + escHtml(j.status.toUpperCase()) + "</span>";
+      html += "<span class=\\"job-prompt\\">" + escHtml(j.prompt) + "</span>";
+      html += "<span class=\\"job-project\\">" + escHtml(j.project ? j.project.label : "") + "</span>";
+      html += "<span class=\\"job-age\\">" + fmtAgeMs(j.startedAt) + "</span>";
+      if (j.status === "running") {
+        html += "<button class=\\"job-kill-btn\\" onclick=\\"killJob('" + j.id + "')\\">Kill</button>";
+      }
+      if (j.output) {
+        var expanded = expandedJobs[j.id] ? "visible" : "";
+        var label = expandedJobs[j.id] ? "hide" : "output";
+        html += "<button class=\\"job-expand-btn\\" onclick=\\"toggleOutput('" + j.id + "')\\">" + label + "</button>";
+        html += "<pre class=\\"job-output " + expanded + "\\">" + escHtml(j.output) + "</pre>";
+      }
+      html += "</div>";
+      html += "</div>";
+    }
+    el.innerHTML = html;
+  }
+
+  // ---- main state render ----
   function renderState(data) {
     // context gauge
     var ctx = data.context || {};
-    var pct = ctx.pct || 0;
-    var used = ctx.usedTokens || 0;
+    var pct   = ctx.pct || 0;
+    var used  = ctx.usedTokens || 0;
     var limit = ctx.limit || 200000;
     document.getElementById("ctxFill").style.width = Math.min(100, pct) + "%";
     document.getElementById("ctxFill").style.background = ctxColor(pct);
@@ -413,7 +940,7 @@ const HTML_PAGE = `<!DOCTYPE html>
       for (var i = 0; i < sessions.length; i++) {
         var s = sessions[i];
         var dotClass = s.state === "working" ? "working" : "idle";
-        var summary = s.summary ? s.summary.substring(0, 300) : "";
+        var summary  = s.summary ? s.summary.substring(0, 300) : "";
         html += "<div class=\\"session-card\\">";
         html += "<div class=\\"state-dot " + dotClass + "\\"></div>";
         html += "<div class=\\"session-info\\">";
@@ -430,9 +957,11 @@ const HTML_PAGE = `<!DOCTYPE html>
     // burn chart
     renderBurnChart(spend.days || []);
 
-    // prompt deck (only if changed)
-    var prompts = data.prompts || [];
-    renderPrompts(prompts);
+    // project select
+    renderProjects(data.projects || []);
+
+    // prompt deck
+    renderPrompts(data.prompts || []);
   }
 
   var lastPromptCount = -1;
@@ -447,11 +976,15 @@ const HTML_PAGE = `<!DOCTYPE html>
     var html = "";
     for (var i = 0; i < prompts.length; i++) {
       var p = prompts[i];
+      html += "<div class=\\"prompt-pair\\">";
       html += "<button class=\\"prompt-btn\\" data-prompt=\\"" + escAttr(p.prompt) + "\\">" + escHtml(p.label) + "</button>";
+      html += "<button class=\\"prompt-btn run-btn\\" data-run=\\"" + escAttr(p.prompt) + "\\">run</button>";
+      html += "</div>";
     }
     el.innerHTML = html;
-    var buttons = el.querySelectorAll(".prompt-btn");
-    for (var j = 0; j < buttons.length; j++) {
+    // copy buttons
+    var copyBtns = el.querySelectorAll(".prompt-btn:not(.run-btn)");
+    for (var j = 0; j < copyBtns.length; j++) {
       (function(btn) {
         btn.addEventListener("click", function() {
           var text = btn.getAttribute("data-prompt");
@@ -465,7 +998,17 @@ const HTML_PAGE = `<!DOCTYPE html>
             fallbackCopy(text, btn);
           }
         });
-      })(buttons[j]);
+      })(copyBtns[j]);
+    }
+    // run buttons
+    var runBtns = el.querySelectorAll(".run-btn");
+    for (var k = 0; k < runBtns.length; k++) {
+      (function(btn) {
+        btn.addEventListener("click", function() {
+          var text = btn.getAttribute("data-run");
+          dispatchPrompt(text);
+        });
+      })(runBtns[k]);
     }
   }
 
@@ -486,8 +1029,6 @@ const HTML_PAGE = `<!DOCTYPE html>
     btn.textContent = "Copied!";
     setTimeout(function() {
       btn.classList.remove("copied");
-      // label is already embedded in data-prompt but we need the original label
-      // re-fetch: just reload the deck
       lastPromptCount = -1;
       if (state) renderPrompts(state.prompts || []);
     }, 1200);
@@ -514,7 +1055,7 @@ const HTML_PAGE = `<!DOCTYPE html>
       var x = Math.round(i * (W / n) + 2);
       var fillH = Math.max(2, Math.round(barH * d.usd / maxUsd));
       var y = barH - fillH + 6;
-      var dateShort = d.date.slice(5); // MM-DD
+      var dateShort = d.date.slice(5);
       var isToday = (i === n - 1);
       var barColor = isToday ? "#58a6ff" : "#30363d";
       html += "<rect x=\\"" + x + "\\" y=\\"" + y + "\\" width=\\"" + barW + "\\" height=\\"" + fillH + "\\" rx=\\"2\\" fill=\\"" + barColor + "\\" />";
@@ -524,22 +1065,6 @@ const HTML_PAGE = `<!DOCTYPE html>
       }
     }
     svg.innerHTML = html;
-  }
-
-  function escHtml(s) {
-    return String(s || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function escAttr(s) {
-    return String(s || "")
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
   }
 
   function poll() {
@@ -562,14 +1087,18 @@ const HTML_PAGE = `<!DOCTYPE html>
   }
 
   poll();
+  // start job poll so existing jobs show on load
+  startJobPoll();
 </script>
 </body>
 </html>`;
 
 // ---- HTTP server ----
 const server = http.createServer(function(req, res) {
-  const url = req.url.split("?")[0];
-  if (url === "/api/state") {
+  const urlPath  = req.url.split("?")[0];
+  const method   = req.method || "GET";
+
+  if (urlPath === "/api/state" && method === "GET") {
     try {
       handleApiState(res);
     } catch (e) {
@@ -578,15 +1107,49 @@ const server = http.createServer(function(req, res) {
     }
     return;
   }
-  if (url === "/" || url === "/index.html") {
+
+  if (urlPath === "/api/dispatch" && method === "POST") {
+    try {
+      handleDispatch(req, res);
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: String(e) }));
+    }
+    return;
+  }
+
+  if (urlPath === "/api/jobs" && method === "GET") {
+    try {
+      handleGetJobs(res);
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: String(e) }));
+    }
+    return;
+  }
+
+  // /api/jobs/<id>/kill
+  const killMatch = urlPath.match(/^\/api\/jobs\/([0-9a-f]+)\/kill$/);
+  if (killMatch && method === "POST") {
+    try {
+      handleKillJob(req, res, killMatch[1]);
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: String(e) }));
+    }
+    return;
+  }
+
+  if ((urlPath === "/" || urlPath === "/index.html") && method === "GET") {
     const body = Buffer.from(HTML_PAGE, "utf8");
     res.writeHead(200, {
-      "Content-Type": "text/html; charset=utf-8",
+      "Content-Type":   "text/html; charset=utf-8",
       "Content-Length": body.length
     });
     res.end(body);
     return;
   }
+
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("Not found");
 });
